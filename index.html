@@ -1,0 +1,131 @@
+<html>
+<head>
+    <title>CanJS + Google Maps Test - Craig Craven</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <link href="style.css" type="text/css" rel="stylesheet" />
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false"></script>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.js"></script>
+    <script src="http://canjs.com/release/latest/can.jquery.js"></script>
+</head>
+<body>
+    <div class="content">
+        <div class="background side_right">
+	</div>
+	<div class="right_block side_right">
+            <div class="content" id="messages">
+              <button type="button" onclick="clearServerMarkers();"> Clear Server Points </button>
+              <script id="messageTemplate" type="text/mustache">
+                <ul>
+                  {{#messages}}
+                    <li> {{.}} </li>
+                  {{/messages}}
+                </ul>
+              </script>    
+	    </div>
+	</div>
+        <div class="background center">
+	</div>
+	<div class="center_block center">
+		<div class="content">
+                    <div id="map-canvas"></div>
+		</div>
+	</div>
+    </div>
+    <script>
+        var messageList = new can.List([]);
+        var markers = []
+        var ids = []
+        var serverUrl = "http://54.187.121.147:50123";
+
+        function placeMarker(position, map) {
+          var marker = new google.maps.Marker({
+	    position: position,
+	    map: map
+	  });
+
+          markers.push(marker);
+	} 
+
+	// Sets the map on all markers in the array.
+	function setAllMap(map) {
+  	  for (var i = 0; i < markers.length; i++) {
+    	    markers[i].setMap(map);
+  	  }
+	}
+
+        // clears all markers from the map
+        function clearMarkers(){
+          setAllMap(null);
+          messageList.replace([]);
+	}
+
+        // CanJS Model for geographic points on a map
+        MarkerPoint = can.Model.extend({
+          findAll: 'GET ' + serverUrl + '/geo.json',
+	  create:  function( attrs ){
+                     return $.post(serverUrl + "/geo.json", attrs);
+                   }
+	}, {});
+
+        // Create a new marker object and save it to the server
+        function saveMarker(lat, lon){
+          new MarkerPoint({lat: lat, lon: lon}).save();
+        }
+
+        // Listen for created MarkerPoint events
+        MarkerPoint.bind("created", function (ev, createdMarkerPoint){
+          addMessage("Added point " + createdMarkerPoint.lat + ", " + createdMarkerPoint.lon);
+
+          var pos = new google.maps.LatLng(createdMarkerPoint.lat, createdMarkerPoint.lon, 0);              
+          ids.push(createdMarkerPoint.id)
+          placeMarker(pos, map);
+        });
+
+        // Log a simple message to the right panel using the can.List
+        function addMessage(msg){
+          messageList.push(msg);
+        }
+        
+        // Set up the Mustache template with the messageList can.List
+        $('#messages').html( can.view('messageTemplate', {messages: messageList}) );
+
+
+        // Create a google map for placing MarkerPoints whereever 
+        // a click event happens
+        var map;
+	function initialize() {
+	  var mapOptions = {
+	    zoom: 8,
+	    center: new google.maps.LatLng(32.08, -81.08)
+	  };
+
+	  map = new google.maps.Map(document.getElementById('map-canvas'),
+	    mapOptions);
+	    
+          google.maps.event.addListener(map, 'click', function(e) {
+	    // Add a point to our Model
+            saveMarker(e.latLng.lat(), e.latLng.lng());
+          });
+	}
+		
+	google.maps.event.addDomListener(window, 'load', initialize);	
+
+
+        // When the page is ready, load all points from the server and 
+        // begin polling for new points from other connected clients
+        $(function() {
+          setInterval(function(){
+            MarkerPoint.findAll({}, function (points){
+              $.each( points, function (i, point){
+                if (ids.indexOf(point.id) == -1){
+                  var pos = new google.maps.LatLng(point.lat, point.lon, 0);              
+                    placeMarker(pos, map);
+                  }
+	        });
+              }, clearMarkers);
+          }, 1000);
+        });
+    </script>
+</body>
+</html>
